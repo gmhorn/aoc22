@@ -1,23 +1,76 @@
 use anyhow::{anyhow, Context, Result};
-use std::str::FromStr;
 
 fn main() -> Result<()> {
-    let lines: Vec<_> = include_str!("../../data/day02.txt").lines().collect();
-    let score: Result<Vec<u32>> = lines.iter().map(|&l| score_round_one(l)).collect();
-    println!("{}", score.unwrap().iter().sum::<u32>());
+    let rounds: Vec<_> = include_str!("../../data/day02.txt").lines().collect();
+    let score_1: u32 = rounds
+        .iter()
+        .map(|&round| score_strategy_one(round))
+        .collect::<Result<Vec<u32>>>()?
+        .iter()
+        .sum();
+    println!("{}", score_1);
+
+    let score_2: u32 = rounds
+        .iter()
+        .map(|&round| score_strategy_two(round))
+        .collect::<Result<Vec<u32>>>()?
+        .iter()
+        .sum();
+    println!("{}", score_2);
 
     Ok(())
 }
 
-#[derive(Debug, Clone, Copy)]
+fn score_strategy_one(round: &str) -> Result<u32> {
+    let (you, me) = round
+        .split_once(' ')
+        .context(format!("contex'{}' is not a valid round", round))?;
+    let you = match you {
+        "A" => Ok(Shape::Rock),
+        "B" => Ok(Shape::Paper),
+        "C" => Ok(Shape::Scissors),
+        _ => Err(anyhow!("'{}' is not a valid hand", you)),
+    }?;
+    let me = match me {
+        "X" => Ok(Shape::Rock),
+        "Y" => Ok(Shape::Paper),
+        "Z" => Ok(Shape::Scissors),
+        _ => Err(anyhow!("'{}' is not a valid hand", me)),
+    }?;
+
+    Ok((me.outcome(&you) as u32) + (me as u32))
+}
+
+fn score_strategy_two(round: &str) -> Result<u32> {
+    let (you, outcome) = round
+        .split_once(' ')
+        .context(format!("contex'{}' is not a valid round", round))?;
+    let you = match you {
+        "A" => Ok(Shape::Rock),
+        "B" => Ok(Shape::Paper),
+        "C" => Ok(Shape::Scissors),
+        _ => Err(anyhow!("'{}' is not a valid hand", you)),
+    }?;
+    let outcome = match outcome {
+        "X" => Ok(Outcome::Lose),
+        "Y" => Ok(Outcome::Draw),
+        "Z" => Ok(Outcome::Win),
+        _ => Err(anyhow!("'{}' is not a valid outcome", outcome)),
+    }?;
+
+    let me = you.find_outcome(outcome);
+    Ok((outcome as u32) + (me as u32))
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 enum Shape {
-    Rock,
-    Paper,
-    Scissors,
+    Rock = 1,
+    Paper = 2,
+    Scissors = 3,
 }
 
 impl Shape {
-    pub fn beats(&self, other: Self) -> bool {
+    fn beats(&self, other: &Self) -> bool {
         match (self, other) {
             (Shape::Rock, Shape::Scissors) => true,
             (Shape::Paper, Shape::Rock) => true,
@@ -26,78 +79,27 @@ impl Shape {
         }
     }
 
-    pub fn value(&self) -> u32 {
-        match self {
-            Shape::Rock => 1,
-            Shape::Paper => 2,
-            Shape::Scissors => 3,
+    pub fn outcome(&self, other: &Self) -> Outcome {
+        if self.beats(other) {
+            Outcome::Win
+        } else if other.beats(self) {
+            Outcome::Lose
+        } else {
+            Outcome::Draw
         }
+    }
+
+    pub fn find_outcome(&self, outcome: Outcome) -> Self {
+        *[Self::Rock, Self::Paper, Self::Scissors]
+            .iter()
+            .find(|other| other.outcome(self) == outcome)
+            .expect("to find a hand that results in the given outcome")
     }
 }
 
-impl FromStr for Shape {
-    type Err = anyhow::Error;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s {
-            "A" => Ok(Shape::Rock),
-            "B" => Ok(Shape::Paper),
-            "C" => Ok(Shape::Scissors),
-            "X" => Ok(Shape::Rock),
-            "Y" => Ok(Shape::Paper),
-            "Z" => Ok(Shape::Scissors),
-            _ => Err(anyhow!("'{}' is not a valid value", s)),
-        }
-    }
-}
-
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 enum Outcome {
-    Win,
-    Lose,
-    Draw,
-}
-
-impl Outcome {
-    pub fn from_round(you: Shape, me: Shape) -> Self {
-        let i_win = me.beats(you);
-        let u_win = you.beats(me);
-
-        match (i_win, u_win) {
-            (true, false) => Self::Win,
-            (false, true) => Self::Lose,
-            (_, _) => Self::Draw,
-        }
-    }
-
-    pub fn value(&self) -> u32 {
-        match self {
-            Outcome::Win => 6,
-            Outcome::Lose => 0,
-            Outcome::Draw => 3,
-        }
-    }
-}
-
-impl FromStr for Outcome {
-    type Err = anyhow::Error;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s {
-            "X" => Ok(Outcome::Lose),
-            "Y" => Ok(Outcome::Draw),
-            "Z" => Ok(Outcome::Win),
-            _ => Err(anyhow!("'{}' is not a valid outcome", s)),
-        }
-    }
-}
-
-pub fn score_round_one(round: &str) -> Result<u32> {
-    let (you, me) = round
-        .split_once(' ')
-        .ok_or(anyhow!("'{}' is not a valid round", round))?;
-    let you: Shape = you.parse()?;
-    let me: Shape = me.parse()?;
-    let outcome = Outcome::from_round(you, me);
-
-    Ok(me.value() + outcome.value())
+    Win = 6,
+    Lose = 0,
+    Draw = 3,
 }
