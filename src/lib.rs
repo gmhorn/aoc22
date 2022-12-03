@@ -1,14 +1,13 @@
-pub fn add(left: usize, right: usize) -> usize {
-    left + right
-}
+use std::time::Instant;
 
-#[cfg(test)]
-mod tests {
-    use super::*;
+pub struct Timer(Instant);
 
-    #[test]
-    fn it_works() {
-        let result = add(2, 2);
-        assert_eq!(result, 4);
+impl Timer {
+    pub fn tick() -> Self {
+        Self(Instant::now())
+    }
+
+    pub fn tock(&self) {
+        println!("{} ms", (Instant::now() - self.0).as_millis())
     }
 }

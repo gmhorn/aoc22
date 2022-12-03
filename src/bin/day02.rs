@@ -1,6 +1,9 @@
 use anyhow::{anyhow, Context, Result};
+use aoc22::Timer;
 
 fn main() -> Result<()> {
+    let timer = Timer::tick();
+
     let rounds: Vec<_> = include_str!("../../data/day02.txt").lines().collect();
     let score_1: u32 = rounds
         .iter()
@@ -18,6 +21,7 @@ fn main() -> Result<()> {
         .sum();
     println!("{}", score_2);
 
+    timer.tock();
     Ok(())
 }
 
