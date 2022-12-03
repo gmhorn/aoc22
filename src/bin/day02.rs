@@ -8,17 +8,13 @@ fn main() -> Result<()> {
     let score_1: u32 = rounds
         .iter()
         .map(|&round| score_strategy_one(round))
-        .collect::<Result<Vec<u32>>>()?
-        .iter()
-        .sum();
+        .sum::<Result<u32>>()?;
     println!("{}", score_1);
 
     let score_2: u32 = rounds
         .iter()
         .map(|&round| score_strategy_two(round))
-        .collect::<Result<Vec<u32>>>()?
-        .iter()
-        .sum();
+        .sum::<Result<u32>>()?;
     println!("{}", score_2);
 
     timer.tock();

@@ -6,7 +6,7 @@ fn main() -> Result<()> {
     let timer = Timer::tick();
     let data: Vec<_> = include_str!("../../data/day03.txt").lines().collect();
 
-    let answer_1: u32 = data
+    let answer_1 = data
         .iter()
         .map(|&bag| compartments(bag))
         .map(|(c1, c2)| {
@@ -14,22 +14,17 @@ fn main() -> Result<()> {
                 .context(format!("no common element for '{}' and '{}'", c1, c2))
                 .and_then(value_of)
         })
-        .collect::<Result<Vec<u32>>>()?
-        .iter()
-        .sum();
+        .sum::<Result<u32>>()?;
     println!("{}", answer_1);
 
-    let answer_2: u32 = data
+    let answer_2 = data
         .chunks(3)
-        .into_iter()
         .map(|bags| {
             common_element(bags)
                 .context(format!("no common element for '{:?}'", bags))
                 .and_then(value_of)
         })
-        .collect::<Result<Vec<u32>>>()?
-        .iter()
-        .sum();
+        .sum::<Result<u32>>()?;
     println!("{}", answer_2);
 
     timer.tock();
