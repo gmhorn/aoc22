@@ -11,24 +11,25 @@ fn main() -> Result<()> {
         .split_once("\n\n")
         .context("Input not in expected format")?;
 
-    let mut stacks: Stacks = setup.parse()?;
-
+    let stacks: Stacks = setup.parse()?;
     let ops: Vec<Op> = ops
         .lines()
         .map(|line| line.parse())
         .collect::<Result<_>>()?;
 
-    for op in ops {
-        stacks.apply(op)?;
-    }
+    let mut answer_one = stacks.clone();
+    answer_one.rearrange_9000(&ops)?;
+    println!("{}", answer_one.tops()?);
 
-    println!("{}", stacks.tops()?);
+    let mut answer_two = stacks;
+    answer_two.rearrange_9001(&ops)?;
+    println!("{}", answer_two.tops()?);
 
     timer.tock();
     Ok(())
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Clone, Default)]
 struct Stacks(Vec<Vec<char>>);
 
 impl Stacks {
@@ -36,29 +37,42 @@ impl Stacks {
         self.0.push(stack.into());
     }
 
-    pub fn apply(&mut self, op: Op) -> Result<()> {
-        for _ in 0..op.count {
-            let krate = self
+    fn rearrange(&mut self, ops: &[Op], strategy: impl Fn(&mut Vec<char>)) -> Result<()> {
+        for op in ops {
+            let from = self
                 .0
                 .get_mut(op.from - 1)
-                .context(format!("Invalid from index '{}'", op.from))?
-                .pop()
-                .context(format!("Stack '{}' is exhausted", op.from))?;
+                .context(format!("Invalid from index '{}'", op.from))?;
+            let mut krates: Vec<_> = (0..op.count)
+                .into_iter()
+                .map(|_| from.pop().context(format!("Stack '{}' exhausted", op.from)))
+                .collect::<Result<_>>()?;
 
-            self.0
+            strategy(&mut krates);
+
+            let to = self
+                .0
                 .get_mut(op.to - 1)
-                .context(format!("Invalid to index '{}'", op.to))?
-                .push(krate);
+                .context(format!("Invalid to index '{}'", op.to))?;
+            krates.iter().for_each(|&krate| to.push(krate));
         }
 
         Ok(())
+    }
+
+    pub fn rearrange_9000(&mut self, ops: &[Op]) -> Result<()> {
+        self.rearrange(ops, |_| {})
+    }
+
+    pub fn rearrange_9001(&mut self, ops: &[Op]) -> Result<()> {
+        self.rearrange(ops, |krates| krates.reverse())
     }
 
     pub fn tops(self) -> Result<String> {
         let mut res = String::new();
 
         for stack in self.0.iter() {
-            let top = stack.get(stack.len() - 1).context("empty stack!")?;
+            let top = stack.last().context("empty stack!")?;
             res.push(*top);
         }
 
@@ -79,7 +93,7 @@ impl FromStr for Stacks {
             if char.is_ascii_alphanumeric() {
                 let stack = crates
                     .iter()
-                    .filter_map(|&c| c.chars().skip(idx).next())
+                    .filter_map(|&c| c.chars().nth(idx))
                     .filter(|c| c.is_ascii_alphanumeric())
                     .collect::<Vec<_>>();
                 stacks.add(&stack);
