@@ -61,20 +61,27 @@ mod fs {
                             let tokens: Vec<_> = fs_entry.split_ascii_whitespace().collect();
                             match &tokens[..] {
                                 ["dir", name] => {
-                                    cur_dir.add_folder(*name).context(format!("Could not add folder {}", name))?;
-                                },
+                                    cur_dir
+                                        .add_folder(*name)
+                                        .context(format!("Could not add folder {}", name))?;
+                                }
                                 [size, name] => {
-                                    let size: usize = size.parse().context(format!("invalid file size {} for file {}", size, name))?;
-                                    cur_dir.add_file(*name, size).context(format!("Could not add file {}", name))?;
-                                },
-                                _ => return Err(anyhow!("invalid filesystem entry '{}'", fs_entry))
+                                    let size: usize = size.parse().context(format!(
+                                        "invalid file size {} for file {}",
+                                        size, name
+                                    ))?;
+                                    cur_dir
+                                        .add_file(*name, size)
+                                        .context(format!("Could not add file {}", name))?;
+                                }
+                                _ => {
+                                    return Err(anyhow!("invalid filesystem entry '{}'", fs_entry))
+                                }
                             }
                         }
-                    },
-                    ["$", "cd", dir] => {
-                        cur_dir = cur_dir.change(dir)?
-                    },
-                    _ => return Err(anyhow!("unknown command '{}'", cmd))
+                    }
+                    ["$", "cd", dir] => cur_dir = cur_dir.change(dir)?,
+                    _ => return Err(anyhow!("unknown command '{}'", cmd)),
                 }
             }
             Ok(filesystem)
@@ -114,9 +121,12 @@ mod fs {
                         v.insert(child_idx);
                         self.fs.0.push(child);
                         Ok(())
-                    },
+                    }
                     Entry::Occupied(o) => Err(anyhow!(
-                    "Attempted to insert duplicate child entry (name: {}, idx: {})", o.key(), self.idx.0)),
+                        "Attempted to insert duplicate child entry (name: {}, idx: {})",
+                        o.key(),
+                        self.idx.0
+                    )),
                 }
             } else {
                 Err(anyhow!("Cannot add children to file (idx: {})", self.idx.0))
@@ -139,22 +149,23 @@ mod fs {
             let node = &mut self.fs.0[self.idx.0];
             if let Node::Folder(folder_data) = node {
                 match path.as_ref() {
-                    "/" => {
-                        Ok(CurrentDirMut {
-                            fs: self.fs,
-                            idx: NodeIdx(0),
-                        })
-                    },
+                    "/" => Ok(CurrentDirMut {
+                        fs: self.fs,
+                        idx: NodeIdx(0),
+                    }),
                     ".." => {
                         let parent_idx = folder_data.parent.unwrap_or(NodeIdx(0));
                         Ok(CurrentDirMut {
                             fs: self.fs,
                             idx: parent_idx,
                         })
-                    },
+                    }
                     child => {
-                        let child_idx = folder_data.children.get(child)
-                            .context(format!("No c")).copied()?;
+                        let child_idx = folder_data
+                            .children
+                            .get(child)
+                            .context(format!("No child {} (idx: {}", child, self.idx.0))
+                            .copied()?;
                         Ok(CurrentDirMut {
                             fs: self.fs,
                             idx: child_idx,
@@ -162,7 +173,11 @@ mod fs {
                     }
                 }
             } else {
-                Err(anyhow!("Cannot cd into a file: {} (idx: {})", path.as_ref(), self.idx.0))
+                Err(anyhow!(
+                    "Cannot cd into a file: {} (idx: {})",
+                    path.as_ref(),
+                    self.idx.0
+                ))
             }
         }
     }
