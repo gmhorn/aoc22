@@ -6,15 +6,9 @@ use aoc22::Timer;
 
 fn main() -> Result<()> {
     let timer = Timer::tick();
-    let mut _lines = include_str!("../../data/day07.txt").lines();
 
-    let mut filesystem = FileSystem::new();
-    let mut cur = filesystem.root_mut();
-    cur.add_file("file1.txt", 1234).expect("can add");
-    cur.add_file("file2.txt", 5678).expect("can add");
-    cur.add_folder("sub1").expect("can add");
+    let filesystem: FileSystem = include_str!("../../data/day07.txt").parse()?;
 
-    cur.cd("sub1").expect("can cd");
     println!("{:?}", filesystem);
 
     timer.tock();
@@ -23,9 +17,10 @@ fn main() -> Result<()> {
 
 mod fs {
     pub use anyhow::Result;
-    use anyhow::{anyhow, Context};
+    use anyhow::{anyhow, Context, Error};
     use std::collections::hash_map::Entry;
     use std::collections::HashMap;
+    use std::str::FromStr;
 
     #[derive(Debug, Clone, Copy)]
     pub struct NodeIdx(usize);
@@ -42,18 +37,47 @@ mod fs {
             Self(vec![Node::Folder(root)])
         }
 
-        pub fn root(&self) -> CurrentDir {
-            CurrentDir {
-                fs: self,
-                node: NodeIdx(0),
-            }
-        }
-
         pub fn root_mut(&mut self) -> CurrentDirMut {
             CurrentDirMut {
                 fs: self,
                 idx: NodeIdx(0),
             }
+        }
+    }
+
+    impl FromStr for FileSystem {
+        type Err = Error;
+
+        fn from_str(s: &str) -> Result<Self, Self::Err> {
+            let mut filesystem = Self::new();
+            let mut cur_dir = filesystem.root_mut();
+
+            let mut lines = s.lines().peekable();
+            while let Some(cmd) = lines.next() {
+                let tokens: Vec<_> = cmd.split_ascii_whitespace().collect();
+                match &tokens[..] {
+                    ["$", "ls"] => {
+                        while let Some(fs_entry) = lines.next_if(|line| !line.starts_with("$")) {
+                            let tokens: Vec<_> = fs_entry.split_ascii_whitespace().collect();
+                            match &tokens[..] {
+                                ["dir", name] => {
+                                    cur_dir.add_folder(*name).context(format!("Could not add folder {}", name))?;
+                                },
+                                [size, name] => {
+                                    let size: usize = size.parse().context(format!("invalid file size {} for file {}", size, name))?;
+                                    cur_dir.add_file(*name, size).context(format!("Could not add file {}", name))?;
+                                },
+                                _ => return Err(anyhow!("invalid filesystem entry '{}'", fs_entry))
+                            }
+                        }
+                    },
+                    ["$", "cd", dir] => {
+                        cur_dir = cur_dir.change(dir)?
+                    },
+                    _ => return Err(anyhow!("unknown command '{}'", cmd))
+                }
+            }
+            Ok(filesystem)
         }
     }
 
@@ -74,6 +98,7 @@ mod fs {
         node: NodeIdx,
     }
 
+    #[derive(Debug)]
     pub struct CurrentDirMut<'fs> {
         fs: &'fs mut FileSystem,
         idx: NodeIdx,
@@ -82,25 +107,19 @@ mod fs {
     impl<'fs> CurrentDirMut<'fs> {
         fn add_child(&mut self, name: impl Into<String>, child: Node) -> Result<()> {
             let child_idx = NodeIdx(self.fs.0.len());
-            let parent_node = self.fs.0.get_mut(self.idx.0)
-                .context(format!("Could not find current dir in file system (idx: {})", self.idx.0))?;
-            if let Node::Folder(parent_data) = parent_node {
-                match parent_data.children.entry(name.into()) {
+            let node = &mut self.fs.0[self.idx.0];
+            if let Node::Folder(folder_data) = node {
+                match folder_data.children.entry(name.into()) {
                     Entry::Vacant(v) => {
                         v.insert(child_idx);
                         self.fs.0.push(child);
                         Ok(())
                     },
                     Entry::Occupied(o) => Err(anyhow!(
-                        "Attempted to insert duplicate child entry {}",
-                        o.key()
-                    )),
+                    "Attempted to insert duplicate child entry (name: {}, idx: {})", o.key(), self.idx.0)),
                 }
             } else {
-                Err(anyhow!(
-                    "Current dir is somehow not a folder (impossible??) (idx: {})",
-                    self.idx.0
-                ))
+                Err(anyhow!("Cannot add children to file (idx: {})", self.idx.0))
             }
         }
 
@@ -116,47 +135,35 @@ mod fs {
             self.add_child(name, child)
         }
 
-        pub fn cd(&'fs mut self, path: impl AsRef<str>) -> Result<()> {
+        pub fn change(self, path: impl AsRef<str>) -> Result<Self> {
             let node = &mut self.fs.0[self.idx.0];
             if let Node::Folder(folder_data) = node {
                 match path.as_ref() {
                     "/" => {
-                        *self = self.fs.root_mut();
+                        Ok(CurrentDirMut {
+                            fs: self.fs,
+                            idx: NodeIdx(0),
+                        })
                     },
                     ".." => {
                         let parent_idx = folder_data.parent.unwrap_or(NodeIdx(0));
-                        self.idx = parent_idx;
+                        Ok(CurrentDirMut {
+                            fs: self.fs,
+                            idx: parent_idx,
+                        })
                     },
                     child => {
                         let child_idx = folder_data.children.get(child)
-                            .context(format!("no child")).copied()?;
-                        self.idx = child_idx;
+                            .context(format!("No c")).copied()?;
+                        Ok(CurrentDirMut {
+                            fs: self.fs,
+                            idx: child_idx,
+                        })
                     }
                 }
-                Ok(())
             } else {
                 Err(anyhow!("Cannot cd into a file: {} (idx: {})", path.as_ref(), self.idx.0))
             }
         }
     }
 }
-
-
-// impl FromStr for Node {
-//     type Err = Error;
-
-//     fn from_str(s: &str) -> Result<Self, Self::Err> {
-//         let (prefix, name) = s
-//             .split_once(' ')
-//             .context(format!("'{}' not a valid filesystem node", s))?;
-
-//         if prefix == "dir" {
-//             Ok(Node::Folder(FolderData::new(name)))
-//         } else {
-//             let size: usize = prefix
-//                 .parse()
-//                 .context(format!("unknown prefix '{}'", prefix))?;
-//             Ok(Node::File(FileData::new(name, size)))
-//         }
-//     }
-// }
