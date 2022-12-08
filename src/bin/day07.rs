@@ -1,9 +1,6 @@
-use anyhow::{anyhow, Result};
+use crate::fs::FileSystem;
+use anyhow::Result;
 use aoc22::Timer;
-use std::{
-    collections::{hash_map::Entry, HashMap},
-    rc::Rc,
-};
 
 // https://smallcultfollowing.com/babysteps/blog/2015/04/06/modeling-graphs-in-rust-using-vector-indices/
 
@@ -11,100 +8,139 @@ fn main() -> Result<()> {
     let timer = Timer::tick();
     let mut _lines = include_str!("../../data/day07.txt").lines();
 
-    let mut root = FolderData::root();
-    root.add("foo", Node::File(1234));
-    root.add("bar", Node::File(6));
+    let mut filesystem = FileSystem::new();
+    let mut cur = filesystem.root_mut();
+    cur.add_file("file1.txt", 1234).expect("can add");
+    cur.add_file("file2.txt", 5678).expect("can add");
+    cur.add_folder("sub1").expect("can add");
 
-    Rc::new(value)
-    let baz = Node::Folder(FolderData::new(&root));
-    root.add("baz", baz);
+    cur.cd("sub1").expect("can cd");
+    println!("{:?}", filesystem);
 
-    println!("{}", root.size());
     timer.tock();
     Ok(())
 }
 
-pub type FSIndex = usize;
+mod fs {
+    pub use anyhow::Result;
+    use anyhow::{anyhow, Context};
+    use std::collections::hash_map::Entry;
+    use std::collections::HashMap;
 
-pub struct FileSystem {
-    nodes: Vec<Node>,
-}
+    #[derive(Debug, Clone, Copy)]
+    pub struct NodeIdx(usize);
 
-pub enum Node {
-    File(usize),
-    Folder(Rc<FolderData>),
-}
+    #[derive(Debug)]
+    pub struct FileSystem(Vec<Node>);
 
-impl Node {
-    pub fn size(&self) -> usize {
-        match self {
-            Node::File(size) => *size,
-            Node::Folder(data) => data.size(),
+    impl FileSystem {
+        pub fn new() -> Self {
+            let root = FolderData {
+                parent: None,
+                children: HashMap::new(),
+            };
+            Self(vec![Node::Folder(root)])
         }
-    }
-}
 
-pub struct FolderData {
-    parent: Option<Rc<FolderData>>,
-    children: HashMap<String, Node>,
-}
-
-impl FolderData {
-    pub fn root() -> Self {
-        Self {
-            parent: None,
-            children: HashMap::new(),
+        pub fn root(&self) -> CurrentDir {
+            CurrentDir {
+                fs: self,
+                node: NodeIdx(0),
+            }
         }
-    }
 
-    pub fn new(parent: &Rc<FolderData>) -> Self {
-        Self {
-            parent: Some(Rc::clone(parent)),
-            children: HashMap::new(),
-        }
-    }
-
-    pub fn add(&mut self, name: impl Into<String>, child: Node) -> Result<()> {
-        match self.children.entry(name.into()) {
-            Entry::Occupied(o) => {
-                Err(anyhow!("duplicate entry '{}", o.key()))
-            },
-            Entry::Vacant(v) => {
-                v.insert(child);
-                Ok(())
+        pub fn root_mut(&mut self) -> CurrentDirMut {
+            CurrentDirMut {
+                fs: self,
+                idx: NodeIdx(0),
             }
         }
     }
 
-    pub fn size(&self) -> usize {
-        self.children
-            .values()
-            .fold(0, |acc, child| acc + child.size())
+    #[derive(Debug)]
+    pub enum Node {
+        File(usize),
+        Folder(FolderData),
+    }
+
+    #[derive(Debug)]
+    pub struct FolderData {
+        parent: Option<NodeIdx>,
+        children: HashMap<String, NodeIdx>,
+    }
+
+    pub struct CurrentDir<'fs> {
+        fs: &'fs FileSystem,
+        node: NodeIdx,
+    }
+
+    pub struct CurrentDirMut<'fs> {
+        fs: &'fs mut FileSystem,
+        idx: NodeIdx,
+    }
+
+    impl<'fs> CurrentDirMut<'fs> {
+        fn add_child(&mut self, name: impl Into<String>, child: Node) -> Result<()> {
+            let child_idx = NodeIdx(self.fs.0.len());
+            let parent_node = self.fs.0.get_mut(self.idx.0)
+                .context(format!("Could not find current dir in file system (idx: {})", self.idx.0))?;
+            if let Node::Folder(parent_data) = parent_node {
+                match parent_data.children.entry(name.into()) {
+                    Entry::Vacant(v) => {
+                        v.insert(child_idx);
+                        self.fs.0.push(child);
+                        Ok(())
+                    },
+                    Entry::Occupied(o) => Err(anyhow!(
+                        "Attempted to insert duplicate child entry {}",
+                        o.key()
+                    )),
+                }
+            } else {
+                Err(anyhow!(
+                    "Current dir is somehow not a folder (impossible??) (idx: {})",
+                    self.idx.0
+                ))
+            }
+        }
+
+        pub fn add_file(&mut self, name: impl Into<String>, size: usize) -> Result<()> {
+            self.add_child(name, Node::File(size))
+        }
+
+        pub fn add_folder(&mut self, name: impl Into<String>) -> Result<()> {
+            let child = Node::Folder(FolderData {
+                parent: Some(self.idx),
+                children: HashMap::new(),
+            });
+            self.add_child(name, child)
+        }
+
+        pub fn cd(&'fs mut self, path: impl AsRef<str>) -> Result<()> {
+            let node = &mut self.fs.0[self.idx.0];
+            if let Node::Folder(folder_data) = node {
+                match path.as_ref() {
+                    "/" => {
+                        *self = self.fs.root_mut();
+                    },
+                    ".." => {
+                        let parent_idx = folder_data.parent.unwrap_or(NodeIdx(0));
+                        self.idx = parent_idx;
+                    },
+                    child => {
+                        let child_idx = folder_data.children.get(child)
+                            .context(format!("no child")).copied()?;
+                        self.idx = child_idx;
+                    }
+                }
+                Ok(())
+            } else {
+                Err(anyhow!("Cannot cd into a file: {} (idx: {})", path.as_ref(), self.idx.0))
+            }
+        }
     }
 }
 
-// struct FolderData {
-//     name: String,
-//     children: Vec<Node>,
-// }
-
-// impl FolderData {
-//     pub fn new(name: impl Into<String>) -> Self {
-//         Self {
-//             name: name.into(),
-//             children: vec![],
-//         }
-//     }
-
-//     pub fn add(&mut self, child: Node) {
-//         self.children.push(child)
-//     }
-// }
-
-// enum Node {
-//     File(FileData),
-//     Folder(FolderData),
-// }
 
 // impl FromStr for Node {
 //     type Err = Error;
