@@ -11,20 +11,8 @@ fn main() -> Result<()> {
         .map(|line| line.parse())
         .collect::<Result<_>>()?;
 
-    let mut rope = Rope3::<2>::new();
-    let mut tail_positions = HashSet::new();
-    tail_positions.insert(rope.last().copied().unwrap());
-
-    for line in include_str!("../../data/day09.txt").lines() {
-        let motion: Motion = line.parse()?;
-
-        for _ in 0..motion.steps {
-            rope.step(&motion.dir);
-            tail_positions.insert(rope.last().copied().unwrap());
-        }
-    }
-    println!("{}", tail_positions.len());
     println!("{}", count_tail_positions::<2>(&motions));
+    println!("{}", count_tail_positions::<10>(&motions));
 
     timer.tock();
     Ok(())
