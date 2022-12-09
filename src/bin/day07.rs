@@ -57,7 +57,7 @@ mod fs {
                 let tokens: Vec<_> = cmd.split_ascii_whitespace().collect();
                 match &tokens[..] {
                     ["$", "ls"] => {
-                        while let Some(fs_entry) = lines.next_if(|line| !line.starts_with("$")) {
+                        while let Some(fs_entry) = lines.next_if(|line| !line.starts_with('$')) {
                             let tokens: Vec<_> = fs_entry.split_ascii_whitespace().collect();
                             match &tokens[..] {
                                 ["dir", name] => {
