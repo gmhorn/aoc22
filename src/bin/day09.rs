@@ -1,20 +1,21 @@
 use anyhow::{anyhow, Context, Error, Result};
 use aoc22::Timer;
 use std::{collections::HashSet, str::FromStr};
+use std::ops::Deref;
 
 fn main() -> Result<()> {
     let timer = Timer::tick();
 
-    let mut rope = Rope::default();
+    let mut rope = Rope3::<2>::new();
     let mut tail_positions = HashSet::new();
-    tail_positions.insert(rope.tail());
+    tail_positions.insert(rope.last().copied().unwrap());
 
     for line in include_str!("../../data/day09.txt").lines() {
         let motion: Motion = line.parse()?;
 
         for _ in 0..motion.steps {
             rope.step(&motion.dir);
-            tail_positions.insert(rope.tail());
+            tail_positions.insert(rope.last().copied().unwrap());
         }
     }
     println!("{}", tail_positions.len());
@@ -29,37 +30,72 @@ pub struct Position {
     pub y: i32,
 }
 
-pub struct Rope2(Vec<Position>);
+pub struct Rope3<const N: usize>([Position; N]);
 
-impl Rope2 {
-    pub fn new(segments: usize) -> Self {
-        if segments < 2 {
-            panic!("Rope must be at least 2 segments long!");
-        }
-        Self(vec![Position::default(); segments])
+impl<const N: usize> Rope3<N> {
+    pub fn new() -> Self {
+        Self([Position::default(); N])
+    }
+
+    pub fn tail(&self) -> Option<&Position> {
+        self.0.last()
     }
 
     pub fn step(&mut self, dir: &Direction) {
-        let head = &mut self.0[0];
-        match dir {
-            Direction::Left => head.x -= 1,
-            Direction::Right => head.x += 1,
-            Direction::Up => head.y += 1,
-            Direction::Down => head.y -= 1,
-        };
-        self.0.iter_mut().reduce(|lead, follow| {
-            Self::update_tail(lead, follow);
-            follow
+        self.0.get_mut(0).map(|head| {
+            match dir {
+                Direction::Left => head.x -= 1,
+                Direction::Right => head.x += 1,
+                Direction::Up => head.y += 1,
+                Direction::Down => head.y -= 1,
+            };
         });
+
+        self.0
+            .iter_mut()
+            .reduce(|lead, follow| {
+                Self::update_follower(lead, follow);
+                follow
+            });
     }
 
-    pub fn tail(&self) -> &Position {
-        &self.0[self.0.len()-1]
-    }
+    fn update_follower(lead: &Position, follow: &mut Position) {
+        let dx = lead.x - follow.x;
+        let dy = lead.y - follow.y;
 
-    fn update_tail(lead: &Position, follow: &mut Position) {
+        match (dx, dy) {
+            // If lead and follow are touching, no update needed.
+            (-1..=1, -1..=1) => {}
+            // Handle lead +- 2 along same rank as follow
+            (-2|2, 0) => follow.x += dx/2,
+            (0, -2|2) => follow.y += dy/2,
+            // Handle L-shaped difference
+            (-2|2, -1|1) => {
+                follow.y = lead.y;
+                follow.x += dx/2;
+            },
+            (-1|1, -2|2) => {
+                follow.x = lead.x;
+                follow.y += dy/2;
+            },
+            // Handle large diagonal jump. This can only happen in N>2 ropes, if the lead itself
+            // had an L-shaped difference with it's lead.
+            (-2|2, -2|2) => {
+                follow.x += dx/2;
+                follow.y += dy/2;
+            }
+            // Anything else is invalid! Panic sloppily.
+            (dx, dy) => panic!("can't update follower for delta ({}, {})", dx, dy),
+        }
     }
+}
 
+impl<const N: usize> Deref for Rope3<N> {
+    type Target = [Position; N];
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
 }
 
 #[derive(Debug, Default)]
