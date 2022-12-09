@@ -29,6 +29,39 @@ pub struct Position {
     pub y: i32,
 }
 
+pub struct Rope2(Vec<Position>);
+
+impl Rope2 {
+    pub fn new(segments: usize) -> Self {
+        if segments < 2 {
+            panic!("Rope must be at least 2 segments long!");
+        }
+        Self(vec![Position::default(); segments])
+    }
+
+    pub fn step(&mut self, dir: &Direction) {
+        let head = &mut self.0[0];
+        match dir {
+            Direction::Left => head.x -= 1,
+            Direction::Right => head.x += 1,
+            Direction::Up => head.y += 1,
+            Direction::Down => head.y -= 1,
+        };
+        self.0.iter_mut().reduce(|lead, follow| {
+            Self::update_tail(lead, follow);
+            follow
+        });
+    }
+
+    pub fn tail(&self) -> &Position {
+        &self.0[self.0.len()-1]
+    }
+
+    fn update_tail(lead: &Position, follow: &mut Position) {
+    }
+
+}
+
 #[derive(Debug, Default)]
 pub struct Rope {
     head: Position,
