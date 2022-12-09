@@ -1,10 +1,15 @@
 use anyhow::{anyhow, Context, Error, Result};
 use aoc22::Timer;
-use std::{collections::HashSet, str::FromStr};
 use std::ops::Deref;
+use std::{collections::HashSet, str::FromStr};
 
 fn main() -> Result<()> {
     let timer = Timer::tick();
+
+    let motions: Vec<Motion> = include_str!("../../data/day09.txt")
+        .lines()
+        .map(|line| line.parse())
+        .collect::<Result<_>>()?;
 
     let mut rope = Rope3::<2>::new();
     let mut tail_positions = HashSet::new();
@@ -19,9 +24,26 @@ fn main() -> Result<()> {
         }
     }
     println!("{}", tail_positions.len());
+    println!("{}", count_tail_positions::<2>(&motions));
 
     timer.tock();
     Ok(())
+}
+
+fn count_tail_positions<const KNOTS: usize>(motions: &[Motion]) -> usize {
+    let mut rope = Rope3::<KNOTS>::new();
+    let mut tail_positions = HashSet::new();
+
+    tail_positions.insert(rope.last().copied().unwrap());
+
+    for motion in motions {
+        for _ in 0..motion.steps {
+            rope.step(&motion.dir);
+            tail_positions.insert(rope.last().copied().unwrap());
+        }
+    }
+
+    tail_positions.len()
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, Default)]
@@ -51,12 +73,10 @@ impl<const N: usize> Rope3<N> {
             };
         });
 
-        self.0
-            .iter_mut()
-            .reduce(|lead, follow| {
-                Self::update_follower(lead, follow);
-                follow
-            });
+        self.0.iter_mut().reduce(|lead, follow| {
+            Self::update_follower(lead, follow);
+            follow
+        });
     }
 
     fn update_follower(lead: &Position, follow: &mut Position) {
@@ -67,22 +87,22 @@ impl<const N: usize> Rope3<N> {
             // If lead and follow are touching, no update needed.
             (-1..=1, -1..=1) => {}
             // Handle lead +- 2 along same rank as follow
-            (-2|2, 0) => follow.x += dx/2,
-            (0, -2|2) => follow.y += dy/2,
+            (-2 | 2, 0) => follow.x += dx / 2,
+            (0, -2 | 2) => follow.y += dy / 2,
             // Handle L-shaped difference
-            (-2|2, -1|1) => {
+            (-2 | 2, -1 | 1) => {
                 follow.y = lead.y;
-                follow.x += dx/2;
-            },
-            (-1|1, -2|2) => {
+                follow.x += dx / 2;
+            }
+            (-1 | 1, -2 | 2) => {
                 follow.x = lead.x;
-                follow.y += dy/2;
-            },
+                follow.y += dy / 2;
+            }
             // Handle large diagonal jump. This can only happen in N>2 ropes, if the lead itself
             // had an L-shaped difference with it's lead.
-            (-2|2, -2|2) => {
-                follow.x += dx/2;
-                follow.y += dy/2;
+            (-2 | 2, -2 | 2) => {
+                follow.x += dx / 2;
+                follow.y += dy / 2;
             }
             // Anything else is invalid! Panic sloppily.
             (dx, dy) => panic!("can't update follower for delta ({}, {})", dx, dy),
